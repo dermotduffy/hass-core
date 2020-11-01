@@ -39,5 +39,17 @@
       "auth_new_token_not_work_error": "Failed to authenticate using newly created token",
       "no_id": "The Hyperion Ambilight instance did not report its id"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "priority": "Hyperion priority to use for colors and effects",
+          "mode": "Mode: Absolute LED control, or priority friendly (for interoperability with other Hyperion-NG remotes)"
+        },
+        "title": "Hyperion options"
+      }
+    }
   }
 }
+

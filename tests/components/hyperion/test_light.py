@@ -10,7 +10,13 @@ from homeassistant.components.hyperion import (
     get_hyperion_unique_id,
     light as hyperion_light,
 )
-from homeassistant.components.hyperion.const import DOMAIN
+from homeassistant.components.hyperion.const import (
+    COLOR_BLACK,
+    CONF_MODE_PRIORITY,
+    DEFAULT_ORIGIN,
+    DEFAULT_PRIORITY,
+    DOMAIN,
+)
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_EFFECT,
@@ -18,7 +24,12 @@ from homeassistant.components.light import (
     DOMAIN as LIGHT_DOMAIN,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_OFF, SERVICE_TURN_ON
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    CONF_MODE,
+    SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
+)
 from homeassistant.helpers.entity_registry import async_get_registry
 from homeassistant.helpers.typing import HomeAssistantType
 
@@ -318,7 +329,7 @@ async def test_light_async_turn_on(hass: HomeAssistantType) -> None:
         **{
             const.KEY_PRIORITY: TEST_PRIORITY,
             const.KEY_COLOR: [255, 255, 255],
-            const.KEY_ORIGIN: hyperion_light.DEFAULT_ORIGIN,
+            const.KEY_ORIGIN: DEFAULT_ORIGIN,
         }
     )
 
@@ -341,7 +352,7 @@ async def test_light_async_turn_on(hass: HomeAssistantType) -> None:
         **{
             const.KEY_PRIORITY: TEST_PRIORITY,
             const.KEY_COLOR: [255, 255, 255],
-            const.KEY_ORIGIN: hyperion_light.DEFAULT_ORIGIN,
+            const.KEY_ORIGIN: DEFAULT_ORIGIN,
         }
     )
 
@@ -366,7 +377,7 @@ async def test_light_async_turn_on(hass: HomeAssistantType) -> None:
         **{
             const.KEY_PRIORITY: TEST_PRIORITY,
             const.KEY_COLOR: (0, 255, 255),
-            const.KEY_ORIGIN: hyperion_light.DEFAULT_ORIGIN,
+            const.KEY_ORIGIN: DEFAULT_ORIGIN,
         }
     )
 
@@ -400,7 +411,7 @@ async def test_light_async_turn_on(hass: HomeAssistantType) -> None:
         **{
             const.KEY_PRIORITY: TEST_PRIORITY,
             const.KEY_COLOR: (0, 255, 255),
-            const.KEY_ORIGIN: hyperion_light.DEFAULT_ORIGIN,
+            const.KEY_ORIGIN: DEFAULT_ORIGIN,
         }
     )
     client.adjustment = [{const.KEY_BRIGHTNESS: 100}]
@@ -473,7 +484,7 @@ async def test_light_async_turn_on(hass: HomeAssistantType) -> None:
         **{
             const.KEY_PRIORITY: TEST_PRIORITY,
             const.KEY_EFFECT: {const.KEY_NAME: effect},
-            const.KEY_ORIGIN: hyperion_light.DEFAULT_ORIGIN,
+            const.KEY_ORIGIN: DEFAULT_ORIGIN,
         }
     )
     client.visible_priority = {
@@ -536,9 +547,49 @@ async def test_light_async_turn_off(hass: HomeAssistantType) -> None:
     assert not client.async_send_set_component.called
 
 
-async def test_light_async_updates_from_hyperion_client(
-    hass: HomeAssistantType,
-) -> None:
+async def test_light_async_turn_off_mode_priority(hass):
+    """Test turning the light off in priority mode."""
+    client = create_mock_client()
+    client.priorities = [
+        {
+            const.KEY_ACTIVE: True,
+            const.KEY_VISIBLE: True,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_COLOR,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 100)},
+        }
+    ]
+
+    await setup_test_config_entry(
+        hass, client=client, options={CONF_MODE: CONF_MODE_PRIORITY}
+    )
+
+    client.async_send_clear = CoroutineMock(return_value=True)
+    client.async_send_set_color = CoroutineMock(return_value=True)
+
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_OFF,
+        {ATTR_ENTITY_ID: TEST_ENTITY_ID_1},
+        blocking=True,
+    )
+
+    assert client.async_send_clear.call_args == call(
+        **{
+            const.KEY_PRIORITY: DEFAULT_PRIORITY,
+        }
+    )
+
+    assert client.async_send_set_color.call_args == call(
+        **{
+            const.KEY_PRIORITY: DEFAULT_PRIORITY,
+            const.KEY_COLOR: COLOR_BLACK,
+            const.KEY_ORIGIN: DEFAULT_ORIGIN,
+        }
+    )
+
+
+async def test_light_async_updates_from_hyperion_client(hass):
     """Test receiving a variety of Hyperion client callbacks."""
     client = create_mock_client()
     await setup_test_config_entry(hass, client=client)
@@ -625,6 +676,200 @@ async def test_light_async_updates_from_hyperion_client(
     _call_registered_callback(client, "client-update", {"loaded-state": True})
     entity_state = hass.states.get(TEST_ENTITY_ID_1)
     assert entity_state.state == "on"
+
+
+async def test_light_async_updates_from_hyperion_client_priority_mode(hass):
+    """Test receiving a variety of Hyperion client callbacks in priority mode."""
+    client = create_mock_client()
+    priority_template = {
+        const.KEY_ACTIVE: True,
+        const.KEY_VISIBLE: True,
+        const.KEY_PRIORITY: DEFAULT_PRIORITY,
+        const.KEY_COMPONENTID: const.KEY_COMPONENTID_COLOR,
+        const.KEY_VALUE: {const.KEY_RGB: (100, 100, 100)},
+    }
+
+    client.priorities = [{**priority_template}]
+
+    await setup_test_config_entry(
+        hass, client=client, options={CONF_MODE: CONF_MODE_PRIORITY}
+    )
+
+    # == Scenario: Color at HA priority will show light as on.
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "on"
+    assert entity_state.attributes["hs_color"] == (0.0, 0.0)
+
+    # == Scenario: Color going to black shows the light as off.
+    client.priorities = [
+        {
+            **priority_template,
+            const.KEY_VALUE: {const.KEY_RGB: COLOR_BLACK},
+        }
+    ]
+    client.visible_priority = client.priorities[0]
+
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
+
+    # == Scenario: Lower priority than HA priority should have no impact on what HA
+    # shows when the HA priority is present.
+    client.priorities = [
+        {**priority_template, const.KEY_PRIORITY: DEFAULT_PRIORITY - 1},
+        {
+            **priority_template,
+            const.KEY_VALUE: {const.KEY_RGB: COLOR_BLACK},
+        },
+    ]
+    client.visible_priority = client.priorities[0]
+
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
+
+    # == Scenario: Fresh color at HA priority should turn HA entity on (even though
+    # there's a lower priority enabled/visible in Hyperion).
+    client.priorities = [
+        {**priority_template, const.KEY_PRIORITY: DEFAULT_PRIORITY - 1},
+        {
+            **priority_template,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 150)},
+        },
+    ]
+    client.visible_priority = client.priorities[0]
+
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "on"
+    assert entity_state.attributes["hs_color"] == (240.0, 33.333)
+
+    # == Scenario: V4L at a higher priority, with no other HA priority at all, should
+    # turn the V4L effect on in HA.
+
+    # Emulate HA turning the light off with black at the HA priority.
+    client.priorities = [
+        {**priority_template, const.KEY_VALUE: {const.KEY_RGB: COLOR_BLACK}}
+    ]
+    client.visible_priority = client.priorities[0]
+
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
+
+    # Emulate V4L turning on.
+    client.priorities = [
+        {
+            **priority_template,
+            const.KEY_PRIORITY: 240,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_V4L,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 150)},
+        },
+    ]
+    client.visible_priority = client.priorities[0]
+
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "on"
+    assert entity_state.attributes["effect"] == const.KEY_COMPONENTID_V4L
+
+    # == Scenario: A lower priority input (lower priority than HA) should 'win', when
+    # the HA priority is not present at all.
+
+    client.priorities = [
+        {
+            **priority_template,
+            const.KEY_VISIBLE: True,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY - 1,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_COLOR,
+            const.KEY_VALUE: {const.KEY_RGB: (255, 0, 0)},
+        },
+        {
+            **priority_template,
+            const.KEY_PRIORITY: 240,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_V4L,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 150)},
+            const.KEY_VISIBLE: False,
+        },
+    ]
+
+    client.visible_priority = client.priorities[0]
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "on"
+    assert entity_state.attributes["effect"] == hyperion_light.KEY_EFFECT_SOLID
+    assert entity_state.attributes["hs_color"] == (0.0, 100.0)
+
+    # == Scenario: If the HA priority isn't present, but there's a black color
+    # visible/'winning', show the entity as off.
+    client.priorities = [
+        {
+            **priority_template,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY - 2,
+            const.KEY_VALUE: {const.KEY_RGB: COLOR_BLACK},
+        },
+        {
+            **priority_template,
+            const.KEY_VISIBLE: True,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY - 1,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_COLOR,
+            const.KEY_VALUE: {const.KEY_RGB: (255, 0, 0)},
+        },
+        {
+            **priority_template,
+            const.KEY_PRIORITY: 240,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_V4L,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 150)},
+            const.KEY_VISIBLE: False,
+        },
+    ]
+    client.visible_priority = client.priorities[0]
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
+
+    # == Scenario: A black color at the HA Priority will turn off the entity.
+    client.priorities = [
+        {
+            **priority_template,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY,
+            const.KEY_VALUE: {const.KEY_RGB: COLOR_BLACK},
+        }
+    ]
+    client.visible_priority = client.priorities[0]
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
+
+    # == Scenario: A non-active priority is ignored.
+    client.priorities = [
+        {
+            const.KEY_ACTIVE: False,
+            const.KEY_VISIBLE: False,
+            const.KEY_PRIORITY: DEFAULT_PRIORITY,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_COLOR,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 100)},
+        }
+    ]
+    client.visible_priority = None
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
+
+    # == Scenario: A priority with no ... priority ... is ignored.
+    client.priorities = [
+        {
+            const.KEY_ACTIVE: True,
+            const.KEY_VISIBLE: True,
+            const.KEY_COMPONENTID: const.KEY_COMPONENTID_COLOR,
+            const.KEY_VALUE: {const.KEY_RGB: (100, 100, 100)},
+        }
+    ]
+    client.visible_priority = None
+    _call_registered_callback(client, "priorities-update")
+    entity_state = hass.states.get(TEST_ENTITY_ID_1)
+    assert entity_state.state == "off"
 
 
 async def test_full_state_loaded_on_start(hass: HomeAssistantType) -> None:

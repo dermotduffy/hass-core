@@ -10,7 +10,14 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.ssdp import ATTR_SSDP_LOCATION, ATTR_UPNP_SERIAL
-from homeassistant.const import CONF_BASE, CONF_HOST, CONF_ID, CONF_PORT, CONF_TOKEN
+from homeassistant.const import (
+    CONF_BASE,
+    CONF_HOST,
+    CONF_ID,
+    CONF_MODE,
+    CONF_PORT,
+    CONF_TOKEN,
+)
 from homeassistant.core import callback
 from homeassistant.helpers.typing import ConfigType
 
@@ -18,7 +25,10 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     CONF_AUTH_ID,
     CONF_CREATE_TOKEN,
+    CONF_MODE_ABSOLUTE,
+    CONF_MODE_PRIORITY,
     CONF_PRIORITY,
+    DEFAULT_MODE,
     DEFAULT_ORIGIN,
     DEFAULT_PRIORITY,
     DOMAIN,
@@ -427,6 +437,12 @@ class HyperionOptionsFlow(config_entries.OptionsFlow):
                             CONF_PRIORITY, DEFAULT_PRIORITY
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=255)),
+                    vol.Optional(
+                        CONF_MODE,
+                        default=self._config_entry.options.get(
+                            CONF_MODE_ABSOLUTE, DEFAULT_MODE
+                        ),
+                    ): vol.In([CONF_MODE_ABSOLUTE, CONF_MODE_PRIORITY]),
                 }
             ),
         )

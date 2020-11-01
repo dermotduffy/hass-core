@@ -9,7 +9,9 @@ from homeassistant import data_entry_flow
 from homeassistant.components.hyperion.const import (
     CONF_AUTH_ID,
     CONF_CREATE_TOKEN,
+    CONF_MODE_PRIORITY,
     CONF_PRIORITY,
+    DEFAULT_MODE,
     DOMAIN,
     SOURCE_IMPORT,
 )
@@ -18,6 +20,7 @@ from homeassistant.config_entries import SOURCE_SSDP, SOURCE_USER
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     CONF_HOST,
+    CONF_MODE,
     CONF_PORT,
     CONF_TOKEN,
     SERVICE_TURN_ON,
@@ -594,8 +597,8 @@ async def test_import_cannot_connect(hass):
     assert result["reason"] == "cannot_connect"
 
 
-async def test_options(hass):
-    """Check an options flow."""
+async def test_options_priority(hass):
+    """Check priority option."""
 
     config_entry = add_test_config_entry(hass)
 
@@ -615,7 +618,10 @@ async def test_options(hass):
         )
         await hass.async_block_till_done()
         assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-        assert result["data"] == {CONF_PRIORITY: new_priority}
+        assert result["data"] == {
+            CONF_PRIORITY: new_priority,
+            CONF_MODE: DEFAULT_MODE,
+        }
 
         # Turn the light on and ensure the new priority is used.
         client.async_send_set_color = CoroutineMock(return_value=True)
@@ -626,3 +632,27 @@ async def test_options(hass):
             blocking=True,
         )
         assert client.async_send_set_color.call_args[1][CONF_PRIORITY] == new_priority
+
+
+async def test_options_mode(hass):
+    """Check mode option."""
+
+    config_entry = add_test_config_entry(hass)
+
+    client = create_mock_client()
+    with patch("hyperion.client.HyperionClient", return_value=client):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+        assert hass.states.get(TEST_ENTITY_ID_1) is not None
+
+        result = await hass.config_entries.options.async_init(config_entry.entry_id)
+        assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+        assert result["step_id"] == "init"
+
+        new_mode = CONF_MODE_PRIORITY
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], user_input={CONF_MODE: new_mode}
+        )
+        await hass.async_block_till_done()
+        assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
+        assert result["data"][CONF_MODE] == new_mode

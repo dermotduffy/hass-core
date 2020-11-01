@@ -18,7 +18,7 @@ from homeassistant.components.light import (
     SUPPORT_EFFECT,
     LightEntity,
 )
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_TOKEN
+from homeassistant.const import CONF_HOST, CONF_MODE, CONF_NAME, CONF_PORT, CONF_TOKEN
 from homeassistant.exceptions import PlatformNotReady
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import (
@@ -30,9 +30,12 @@ import homeassistant.util.color as color_util
 
 from . import async_create_connect_client, get_hyperion_unique_id
 from .const import (
+    COLOR_BLACK,
+    CONF_MODE_PRIORITY,
     CONF_ON_UNLOAD,
     CONF_PRIORITY,
     CONF_ROOT_CLIENT,
+    DEFAULT_MODE,
     DEFAULT_ORIGIN,
     DEFAULT_PRIORITY,
     DOMAIN,
@@ -317,6 +320,8 @@ class Hyperion(LightEntity):
     @property
     def is_on(self):
         """Return true if not black."""
+        if self._get_option(CONF_MODE) == CONF_MODE_PRIORITY:
+            return tuple(self._rgb_color) != COLOR_BLACK
         return self._client.is_on()
 
     @property
@@ -355,7 +360,10 @@ class Hyperion(LightEntity):
 
     def _get_option(self, key: str) -> Any:
         """Get a value from the provided options."""
-        defaults = {CONF_PRIORITY: DEFAULT_PRIORITY}
+        defaults = {
+            CONF_PRIORITY: DEFAULT_PRIORITY,
+            CONF_MODE: DEFAULT_MODE,
+        }
         return self._options.get(key, defaults[key])
 
     async def async_turn_on(self, **kwargs):
@@ -366,25 +374,19 @@ class Hyperion(LightEntity):
         # color, effect), but this is not possible due to:
         # https://github.com/hyperion-project/hyperion.ng/issues/967
         if not self.is_on:
-            if not await self._client.async_send_set_component(
-                **{
-                    const.KEY_COMPONENTSTATE: {
-                        const.KEY_COMPONENT: const.KEY_COMPONENTID_ALL,
-                        const.KEY_STATE: True,
+            for component in [
+                const.KEY_COMPONENTID_ALL,
+                const.KEY_COMPONENTID_LEDDEVICE,
+            ]:
+                if not await self._client.async_send_set_component(
+                    **{
+                        const.KEY_COMPONENTSTATE: {
+                            const.KEY_COMPONENT: component,
+                            const.KEY_STATE: True,
+                        }
                     }
-                }
-            ):
-                return
-
-            if not await self._client.async_send_set_component(
-                **{
-                    const.KEY_COMPONENTSTATE: {
-                        const.KEY_COMPONENT: const.KEY_COMPONENTID_LEDDEVICE,
-                        const.KEY_STATE: True,
-                    }
-                }
-            ):
-                return
+                ):
+                    return
 
         # == Get key parameters ==
         brightness = kwargs.get(ATTR_BRIGHTNESS, self._brightness)
@@ -457,16 +459,28 @@ class Hyperion(LightEntity):
                 return
 
     async def async_turn_off(self, **kwargs):
-        """Disable the LED output component."""
-        if not await self._client.async_send_set_component(
+        """Turn the Hyperion light off."""
+        if self._get_option(CONF_MODE) == CONF_MODE_PRIORITY:
+            if not await self._client.async_send_clear(
+                **{const.KEY_PRIORITY: self._get_option(CONF_PRIORITY)}
+            ):
+                return
+            await self._client.async_send_set_color(
+                **{
+                    const.KEY_PRIORITY: self._get_option(CONF_PRIORITY),
+                    const.KEY_COLOR: COLOR_BLACK,
+                    const.KEY_ORIGIN: DEFAULT_ORIGIN,
+                }
+            )
+            return
+        await self._client.async_send_set_component(
             **{
                 const.KEY_COMPONENTSTATE: {
                     const.KEY_COMPONENT: const.KEY_COMPONENTID_LEDDEVICE,
                     const.KEY_STATE: False,
                 }
             }
-        ):
-            return
+        )
 
     def _set_internal_state(self, brightness=None, rgb_color=None, effect=None):
         """Set the internal state."""
@@ -502,20 +516,32 @@ class Hyperion(LightEntity):
 
     def _update_priorities(self, _=None):
         """Update Hyperion priorities."""
-        visible_priority = self._client.visible_priority
-        if visible_priority:
-            componentid = visible_priority.get(const.KEY_COMPONENTID)
+        priority = None
+        if self._get_option(CONF_MODE) == CONF_MODE_PRIORITY:
+            for candidate in self._client.priorities or []:
+                if const.KEY_PRIORITY not in candidate:
+                    continue
+                if candidate[const.KEY_PRIORITY] == self._get_option(
+                    CONF_PRIORITY
+                ) and candidate.get(const.KEY_ACTIVE, False):
+                    priority = candidate
+
+        if not priority:
+            priority = self._client.visible_priority
+
+        if priority:
+            componentid = priority.get(const.KEY_COMPONENTID)
             if componentid in const.KEY_COMPONENTID_EXTERNAL_SOURCES:
                 self._set_internal_state(rgb_color=DEFAULT_COLOR, effect=componentid)
             elif componentid == const.KEY_COMPONENTID_EFFECT:
                 # Owner is the effect name.
                 # See: https://docs.hyperion-project.org/en/json/ServerInfo.html#priorities
                 self._set_internal_state(
-                    rgb_color=DEFAULT_COLOR, effect=visible_priority[const.KEY_OWNER]
+                    rgb_color=DEFAULT_COLOR, effect=priority[const.KEY_OWNER]
                 )
             elif componentid == const.KEY_COMPONENTID_COLOR:
                 self._set_internal_state(
-                    rgb_color=visible_priority[const.KEY_VALUE][const.KEY_RGB],
+                    rgb_color=priority[const.KEY_VALUE][const.KEY_RGB],
                     effect=KEY_EFFECT_SOLID,
                 )
             self.async_write_ha_state()

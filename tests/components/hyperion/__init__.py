@@ -77,8 +77,9 @@ def create_mock_client():
     return mock_client
 
 
-def add_test_config_entry(hass):
+def add_test_config_entry(hass, options=None):
     """Add a test config entry."""
+    options = options or TEST_CONFIG_ENTRY_OPTIONS
     config_entry = MockConfigEntry(
         entry_id=TEST_CONFIG_ENTRY_ID,
         domain=DOMAIN,
@@ -88,15 +89,15 @@ def add_test_config_entry(hass):
         },
         title=f"Hyperion {TEST_SERVER_ID}",
         unique_id=TEST_SERVER_ID,
-        options=TEST_CONFIG_ENTRY_OPTIONS,
+        options=options,
     )
     config_entry.add_to_hass(hass)
     return config_entry
 
 
-async def setup_test_config_entry(hass, client=None):
+async def setup_test_config_entry(hass, client=None, options=None):
     """Add a test Hyperion entity to hass."""
-    config_entry = add_test_config_entry(hass)
+    config_entry = add_test_config_entry(hass, options=options)
 
     client = client or create_mock_client()
     # pylint: disable=attribute-defined-outside-init
