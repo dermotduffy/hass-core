@@ -183,17 +183,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             )
             return
         config_entry = result.get("result")
-        result = await hass.config_entries.options.async_init(
-            config_entry.entry_id,
-            data={
-                CONF_PRIORITY: config[CONF_PRIORITY],
-            },
-        )
-        if result["type"] != data_entry_flow.RESULT_TYPE_CREATE_ENTRY:
-            _LOGGER.warning(
-                "Could not automatically migrate Hyperion YAML to an options entry."
-            )
-            return
+        options = {**config_entry.options, CONF_PRIORITY: config[CONF_PRIORITY]}
+        hass.config_entries.async_update_entry(config_entry, options=options)
+
         _LOGGER.info(
             "Successfully migrated Hyperion YAML configuration to a config entry."
         )
