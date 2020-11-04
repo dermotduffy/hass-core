@@ -45,8 +45,7 @@
       "init": {
         "data": {
           "priority": "Hyperion priority to use for colors and effects"
-        },
-        "title": "Hyperion options"
+        }
       }
     }
   }
