@@ -143,7 +143,10 @@ class HyperionBaseLight(LightEntity):
 
         self._static_effect_list: List[str] = [KEY_EFFECT_SOLID]
         if self._support_external_effects:
-            self._static_effect_list += list(const.KEY_COMPONENTID_EXTERNAL_SOURCES)
+            self._static_effect_list += [
+                const.KEY_COMPONENTID_TO_NAME[component]
+                for component in const.KEY_COMPONENTID_EXTERNAL_SOURCES
+            ]
         self._effect_list: List[str] = self._static_effect_list[:]
 
         self._client_callbacks = {
@@ -183,7 +186,11 @@ class HyperionBaseLight(LightEntity):
     def icon(self) -> str:
         """Return state specific icon."""
         if self.is_on:
-            if self.effect in const.KEY_COMPONENTID_EXTERNAL_SOURCES:
+            if (
+                self.effect in const.KEY_COMPONENTID_FROM_NAME
+                and const.KEY_COMPONENTID_FROM_NAME[self.effect]
+                in const.KEY_COMPONENTID_EXTERNAL_SOURCES
+            ):
                 return ICON_EXTERNAL_SOURCE
             if self.effect != KEY_EFFECT_SOLID:
                 return ICON_EFFECT
@@ -253,8 +260,21 @@ class HyperionBaseLight(LightEntity):
         if (
             effect
             and self._support_external_effects
-            and effect in const.KEY_COMPONENTID_EXTERNAL_SOURCES
+            and (
+                effect in const.KEY_COMPONENTID_EXTERNAL_SOURCES
+                or effect in const.KEY_COMPONENTID_FROM_NAME
+            )
         ):
+            if effect in const.KEY_COMPONENTID_FROM_NAME:
+                component = const.KEY_COMPONENTID_FROM_NAME[effect]
+            else:
+                _LOGGER.warning(
+                    "Use of Hyperion effect '%s' is deprecated and will be removed "
+                    "in a future release. Please use '%s' instead.",
+                    effect,
+                    const.KEY_COMPONENTID_TO_NAME[effect],
+                )
+                component = effect
 
             # Clear any color/effect.
             if not await self._client.async_send_clear(
@@ -268,7 +288,7 @@ class HyperionBaseLight(LightEntity):
                     **{
                         const.KEY_COMPONENTSTATE: {
                             const.KEY_COMPONENT: key,
-                            const.KEY_STATE: effect == key,
+                            const.KEY_STATE: component == key,
                         }
                     }
                 ):
@@ -344,8 +364,12 @@ class HyperionBaseLight(LightEntity):
             if (
                 self._support_external_effects
                 and componentid in const.KEY_COMPONENTID_EXTERNAL_SOURCES
+                and componentid in const.KEY_COMPONENTID_TO_NAME
             ):
-                self._set_internal_state(rgb_color=DEFAULT_COLOR, effect=componentid)
+                self._set_internal_state(
+                    rgb_color=DEFAULT_COLOR,
+                    effect=const.KEY_COMPONENTID_TO_NAME[componentid],
+                )
             elif componentid == const.KEY_COMPONENTID_EFFECT:
                 # Owner is the effect name.
                 # See: https://docs.hyperion-project.org/en/json/ServerInfo.html#priorities

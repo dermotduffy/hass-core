@@ -12,6 +12,7 @@ from hyperion.const import (
     KEY_COMPONENTID_GRABBER,
     KEY_COMPONENTID_LEDDEVICE,
     KEY_COMPONENTID_SMOOTHING,
+    KEY_COMPONENTID_TO_NAME,
     KEY_COMPONENTID_V4L,
     KEY_COMPONENTS,
     KEY_COMPONENTSTATE,
@@ -33,7 +34,6 @@ from homeassistant.util import slugify
 
 from . import get_hyperion_unique_id, listen_for_instance_updates
 from .const import (
-    COMPONENT_TO_NAME,
     CONF_INSTANCE_CLIENTS,
     DOMAIN,
     NAME_SUFFIX_HYPERION_COMPONENT_SWITCH,
@@ -63,7 +63,7 @@ async def async_setup_entry(
     def component_to_switch_type(component: str) -> str:
         """Convert a component to a switch type string."""
         return slugify(
-            f"{TYPE_HYPERION_COMPONENT_SWITCH_BASE} {COMPONENT_TO_NAME[component]}"
+            f"{TYPE_HYPERION_COMPONENT_SWITCH_BASE} {KEY_COMPONENTID_TO_NAME[component]}"
         )
 
     def component_to_unique_id(component: str, instance_num: int) -> str:
@@ -78,7 +78,7 @@ async def async_setup_entry(
         return (
             f"{instance_name} "
             f"{NAME_SUFFIX_HYPERION_COMPONENT_SWITCH} "
-            f"{COMPONENT_TO_NAME.get(component, component.capitalize())}"
+            f"{KEY_COMPONENTID_TO_NAME.get(component, component.capitalize())}"
         )
 
     @callback

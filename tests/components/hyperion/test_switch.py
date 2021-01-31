@@ -11,12 +11,12 @@ from hyperion.const import (
     KEY_COMPONENTID_GRABBER,
     KEY_COMPONENTID_LEDDEVICE,
     KEY_COMPONENTID_SMOOTHING,
+    KEY_COMPONENTID_TO_NAME,
     KEY_COMPONENTID_V4L,
     KEY_COMPONENTSTATE,
     KEY_STATE,
 )
 
-from homeassistant.components.hyperion.const import COMPONENT_TO_NAME
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_OFF, SERVICE_TURN_ON
 from homeassistant.helpers.typing import HomeAssistantType
@@ -134,7 +134,7 @@ async def test_switch_has_correct_entities(hass: HomeAssistantType) -> None:
         entity_id = (
             TEST_SWITCH_COMPONENT_BASE_ENTITY_ID
             + "_"
-            + slugify(COMPONENT_TO_NAME[component])
+            + slugify(KEY_COMPONENTID_TO_NAME[component])
         )
         entity_state = hass.states.get(entity_id)
         assert entity_state, f"Couldn't find entity: {entity_id}"
